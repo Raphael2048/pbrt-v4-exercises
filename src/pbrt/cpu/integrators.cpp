@@ -723,7 +723,7 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         // Sample direct illumination from the light sources
         if (IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
-            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler);
+            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler, L);
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
@@ -763,7 +763,8 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
 
 SampledSpectrum PathIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
                                          SampledWavelengths &lambda,
-                                         Sampler sampler) const {
+                                         Sampler sampler,
+                                         const SampledSpectrum& CurrentL) const {
     // Initialize _LightSampleContext_ for light sampling
     LightSampleContext ctx(intr);
     // Try to nudge the light sampling position to correct side of the surface
@@ -790,17 +791,30 @@ SampledSpectrum PathIntegrator::SampleLd(const SurfaceInteraction &intr, const B
     // Evaluate BSDF for light sample and check light visibility
     Vector3f wo = intr.wo, wi = ls->wi;
     SampledSpectrum f = bsdf->f(wo, wi) * AbsDot(wi, intr.shading.n);
-    if (!f || !Unoccluded(intr, ls->pLight))
-        return {};
+
+    if(!f) return{};
+    // if (!f || !Unoccluded(intr, ls->pLight))
+    //     return {};
 
     // Return light's contribution to reflected radiance
     Float p_l = sampledLight->p * ls->pdf;
+    SampledSpectrum ToReturn{};
     if (IsDeltaLight(light.Type()))
-        return ls->L * f / p_l;
+        ToReturn = ls->L * f / p_l;
     else {
         Float p_b = bsdf->PDF(wo, wi);
         Float w_l = PowerHeuristic(1, p_l, 1, p_b);
-        return w_l * ls->L * f / p_l;
+        ToReturn = w_l * ls->L * f / p_l;
+    }
+    
+    const Float ratio = ToReturn.Average() / std::max(CurrentL.Average(), 1e-10f);
+    constexpr static Float PotentialContributionThreshold = 0.7f;
+    if(ratio < PotentialContributionThreshold) {
+        constexpr static Float RussianRouletteThreshold = 0.7f;
+        if(sampler.Get1D() < RussianRouletteThreshold) return {};
+        return Unoccluded(intr, ls->pLight) ? ToReturn / (1- RussianRouletteThreshold) : SampledSpectrum{};
+    } else {
+        return Unoccluded(intr, ls->pLight) ? ToReturn : SampledSpectrum{};
     }
 }
 

@@ -227,7 +227,7 @@ class PathIntegrator : public RayIntegrator {
   private:
     // PathIntegrator Private Methods
     SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
-                             SampledWavelengths &lambda, Sampler sampler) const;
+                             SampledWavelengths &lambda, Sampler sampler, const SampledSpectrum& CurrentL) const;
 
     // PathIntegrator Private Members
     int maxDepth;
