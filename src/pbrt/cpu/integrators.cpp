@@ -190,7 +190,8 @@ void ImageTileIntegrator::Render() {
         waveStart = waveEnd;
         waveEnd = std::min(spp, waveEnd + nextWaveSize);
         if (!referenceImage)
-            nextWaveSize = std::min(2 * nextWaveSize, 64);
+            nextWaveSize = 1;
+            // nextWaveSize = std::min(2 * nextWaveSize, 64);
         if (waveStart == spp)
             progress.Done();
 
@@ -236,6 +237,8 @@ void RayIntegrator::EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler
     Filter filter = camera.GetFilm().GetFilter();
     CameraSample cameraSample = GetCameraSample(sampler, pPixel, filter);
 
+    Float visibilityThreshold = camera.GetFilm().GetVisibilityTestThreshold(pPixel);
+
     // Generate camera ray for current sample
     pstd::optional<CameraRayDifferential> cameraRay =
         camera.GenerateRayDifferential(cameraSample, lambda);
@@ -257,7 +260,7 @@ void RayIntegrator::EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler
         // Evaluate radiance along camera ray
         bool initializeVisibleSurface = camera.GetFilm().UsesVisibleSurface();
         L = cameraRay->weight * Li(cameraRay->ray, lambda, sampler, scratchBuffer,
-                                   initializeVisibleSurface ? &visibleSurface : nullptr);
+                                   initializeVisibleSurface ? &visibleSurface : nullptr, visibilityThreshold);
 
         // Issue warning if unexpected radiance value is returned
         if (L.HasNaNs()) {
@@ -627,11 +630,11 @@ PathIntegrator::PathIntegrator(int maxDepth, Camera camera, Sampler sampler,
 
 SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
-                                   VisibleSurface *visibleSurf) const {
+                                   VisibleSurface *visibleSurf, Float visibilityTestThreshold) const {
     // Declare local variables for _PathIntegrator::Li()_
     SampledSpectrum L(0.f), beta(1.f);
     int depth = 0;
-
+    
     Float p_b, etaScale = 1;
     bool specularBounce = false, anyNonSpecularBounces = false;
     LightSampleContext prevIntrCtx;
@@ -723,7 +726,7 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         // Sample direct illumination from the light sources
         if (IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
-            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler);
+            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler, visibilityTestThreshold);
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
@@ -763,7 +766,7 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
 
 SampledSpectrum PathIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
                                          SampledWavelengths &lambda,
-                                         Sampler sampler) const {
+                                         Sampler sampler, Float visibilityTestThreshold) const {
     // Initialize _LightSampleContext_ for light sampling
     LightSampleContext ctx(intr);
     // Try to nudge the light sampling position to correct side of the surface
@@ -790,17 +793,33 @@ SampledSpectrum PathIntegrator::SampleLd(const SurfaceInteraction &intr, const B
     // Evaluate BSDF for light sample and check light visibility
     Vector3f wo = intr.wo, wi = ls->wi;
     SampledSpectrum f = bsdf->f(wo, wi) * AbsDot(wi, intr.shading.n);
-    if (!f || !Unoccluded(intr, ls->pLight))
-        return {};
+    SampledSpectrum ToReturn {};
+    
+    if (!f) return {};
 
     // Return light's contribution to reflected radiance
     Float p_l = sampledLight->p * ls->pdf;
     if (IsDeltaLight(light.Type()))
-        return ls->L * f / p_l;
+        ToReturn = ls->L * f / p_l;
     else {
         Float p_b = bsdf->PDF(wo, wi);
         Float w_l = PowerHeuristic(1, p_l, 1, p_b);
-        return w_l * ls->L * f / p_l;
+        ToReturn = w_l * ls->L * f / p_l;
+    }
+    
+    float q = 0.0f;
+    if(visibilityTestThreshold != 0.f && !std::isnan(visibilityTestThreshold) && !std::isnan(visibilityTestThreshold)) {
+        q = std::clamp(1.0f - ToReturn.Average() / visibilityTestThreshold, 0.0f, 1.0f);
+    }
+    // q = 0.1f;
+    if(q == 0.0f) {
+        return Unoccluded(intr, ls->pLight) ? ToReturn : SampledSpectrum{};
+    } else {
+        if(sampler.Get1D() < q) {
+            return {};
+        } else {
+            return Unoccluded(intr, ls->pLight) ? ToReturn/ (1.0f - q) : SampledSpectrum{};
+        }
     }
 }
 

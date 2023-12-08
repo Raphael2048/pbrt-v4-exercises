@@ -55,6 +55,7 @@ class Film : public TaggedPointer<RGBFilm, GBufferFilm, SpectralFilm> {
     RGB GetPixelRGB(Point2i p, Float splatScale = 1) const;
 
     PBRT_CPU_GPU inline Filter GetFilter() const;
+    PBRT_CPU_GPU inline Float GetVisibilityTestThreshold(Point2i pPixel) const;
     PBRT_CPU_GPU inline const PixelSensor *GetPixelSensor() const;
     std::string GetFilename() const;
 

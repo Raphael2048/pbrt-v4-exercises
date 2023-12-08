@@ -214,6 +214,11 @@ class FilmBase {
     }
 
     PBRT_CPU_GPU
+    Float GetVisibilityTestThreshold(Point2i pPixel) const {
+        return 0.5f;
+    }
+
+    PBRT_CPU_GPU
     Bounds2f SampleBounds() const;
 
     std::string BaseToString() const;
@@ -252,6 +257,23 @@ class RGBFilm : public FilmBase {
         for (int c = 0; c < 3; ++c)
             pixel.rgbSum[c] += weight * rgb[c];
         pixel.weightSum += weight;
+        
+        const Float illumination = L.Average();
+        pixel.IlluminationNum ++;
+        if(pixel.AverageIllumination == 0.0) {
+            pixel.AverageIllumination = illumination;
+            pixel.AverageIlluminationSquare = illumination * illumination;
+        } else {
+            constexpr Float alpha = 0.1f;
+            pixel.AverageIllumination = illumination * alpha + pixel.AverageIllumination * (1.0 - alpha);
+            pixel.AverageIlluminationSquare = illumination * illumination * alpha + pixel.AverageIlluminationSquare * (1.0 - alpha);
+        }
+    }
+
+    PBRT_CPU_GPU
+    Float GetVisibilityTestThreshold(Point2i pPixel) const {
+        const Pixel &pixel = pixels[pPixel];
+        return std::sqrt(pixel.AverageIlluminationSquare - pixel.AverageIllumination * pixel.AverageIllumination);
     }
 
     PBRT_CPU_GPU
@@ -304,6 +326,9 @@ class RGBFilm : public FilmBase {
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
         AtomicDouble rgbSplat[3];
+        double AverageIllumination = 0;
+        double AverageIlluminationSquare = 0;
+        int IlluminationNum = 0;
     };
 
     // RGBFilm Private Members
@@ -561,6 +586,12 @@ PBRT_CPU_GPU
 inline Filter Film::GetFilter() const {
     auto filter = [&](auto ptr) { return ptr->GetFilter(); };
     return Dispatch(filter);
+}
+
+PBRT_CPU_GPU
+inline Float Film::GetVisibilityTestThreshold(Point2i pPixel) const {
+    auto get = [&](auto ptr) { return ptr->GetVisibilityTestThreshold(pPixel); };
+    return Dispatch(get);
 }
 
 PBRT_CPU_GPU

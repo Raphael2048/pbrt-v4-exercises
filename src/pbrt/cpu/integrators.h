@@ -109,6 +109,11 @@ class RayIntegrator : public ImageTileIntegrator {
     virtual SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda,
                                Sampler sampler, ScratchBuffer &scratchBuffer,
                                VisibleSurface *visibleSurface) const = 0;
+    virtual SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda,
+                               Sampler sampler, ScratchBuffer &scratchBuffer,
+                               VisibleSurface *visibleSurface, Float visibilityTestThreshold) const {
+        return Li(ray, lambda, sampler, scratchBuffer, visibleSurface);
+    };
 };
 
 // RandomWalkIntegrator Definition
@@ -214,7 +219,11 @@ class PathIntegrator : public RayIntegrator {
 
     SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
-                       VisibleSurface *visibleSurface) const;
+                       VisibleSurface *visibleSurface) const override { return {};};
+
+    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+                       ScratchBuffer &scratchBuffer,
+                       VisibleSurface *visibleSurface, Float visibilityTestThreshold) const override;
 
     static std::unique_ptr<PathIntegrator> Create(const ParameterDictionary &parameters,
                                                   Camera camera, Sampler sampler,
@@ -227,7 +236,7 @@ class PathIntegrator : public RayIntegrator {
   private:
     // PathIntegrator Private Methods
     SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
-                             SampledWavelengths &lambda, Sampler sampler) const;
+                             SampledWavelengths &lambda, Sampler sampler, Float visibilityTestThreshold) const;
 
     // PathIntegrator Private Members
     int maxDepth;
