@@ -625,16 +625,34 @@ PathIntegrator::PathIntegrator(int maxDepth, Camera camera, Sampler sampler,
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {}
 
+#define NEW_MIX 1
+
 SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *visibleSurf) const {
     // Declare local variables for _PathIntegrator::Li()_
     SampledSpectrum L(0.f), beta(1.f);
+    SampledSpectrum beforeTerminatedL(0.);
+    SampledSpectrum afterTerminatedL(0.);
+    SampledWavelengths beforeTerminatedLambda = lambda;
     int depth = 0;
 
     Float p_b, etaScale = 1;
     bool specularBounce = false, anyNonSpecularBounces = false;
     LightSampleContext prevIntrCtx;
+
+    auto AddToL = [&](SampledSpectrum ToAdd) {
+#if NEW_MIX
+        if(lambda.SecondaryTerminated()) {
+            afterTerminatedL += ToAdd;
+        } else {
+            beforeTerminatedL += ToAdd;
+        }
+#else
+        L += ToAdd;
+#endif
+    };
+    
 
     // Sample path from camera and accumulate radiance estimate
     while (true) {
@@ -646,14 +664,16 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
             for (const auto &light : infiniteLights) {
                 SampledSpectrum Le = light.Le(ray, lambda);
                 if (depth == 0 || specularBounce)
-                    L += beta * Le;
+                    AddToL(beta * Le);
+                    // L += beta * Le;
                 else {
                     // Compute MIS weight for infinite light
                     Float p_l = lightSampler.PMF(prevIntrCtx, light) *
                                 light.PDF_Li(prevIntrCtx, ray.d, true);
                     Float w_b = PowerHeuristic(1, p_b, 1, p_l);
 
-                    L += beta * w_b * Le;
+                    AddToL(beta * w_b * Le);
+                    // L += beta * w_b * Le;
                 }
             }
 
@@ -663,7 +683,8 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         SampledSpectrum Le = si->intr.Le(-ray.d, lambda);
         if (Le) {
             if (depth == 0 || specularBounce)
-                L += beta * Le;
+                // L += beta * Le;
+                AddToL(beta * Le);
             else {
                 // Compute MIS weight for area light
                 Light areaLight(si->intr.areaLight);
@@ -671,7 +692,8 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
                             areaLight.PDF_Li(prevIntrCtx, ray.d, true);
                 Float w_l = PowerHeuristic(1, p_b, 1, p_l);
 
-                L += beta * w_l * Le;
+                // L += beta * w_l * Le;
+                AddToL(beta * w_l * Le);
             }
         }
 
@@ -726,7 +748,8 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
             SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler);
             if (!Ld)
                 ++zeroRadiancePaths;
-            L += beta * Ld;
+            // L += beta * Ld;
+            AddToL(beta * Ld);
         }
 
         // Sample BSDF to get new path direction
@@ -758,7 +781,19 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         }
     }
     pathLength << depth;
+
+#if NEW_MIX
+    if(afterTerminatedL) {
+        lambda = beforeTerminatedLambda;
+        SampledSpectrum after(0.);
+        after[0] = afterTerminatedL[0] * NSpectrumSamples;
+        return beforeTerminatedL + after;
+    } else {
+        return beforeTerminatedL;
+    }
+#else
     return L;
+#endif
 }
 
 SampledSpectrum PathIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
