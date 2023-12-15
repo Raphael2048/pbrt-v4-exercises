@@ -188,7 +188,7 @@ class BxDF
 
     PBRT_CPU_GPU
     SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc,
-                        pstd::span<const Point2f> u2) const;
+                        pstd::span<const Point2f> u2, bool useOwnRho=false) const;
     SampledSpectrum rho(pstd::span<const Point2f> u1, pstd::span<const Float> uc2,
                         pstd::span<const Point2f> u2) const;
 

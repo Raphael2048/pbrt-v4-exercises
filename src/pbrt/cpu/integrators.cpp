@@ -625,6 +625,8 @@ PathIntegrator::PathIntegrator(int maxDepth, Camera camera, Sampler sampler,
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {}
 
+STAT_MEMORY_COUNTER("VisibleSurface/CostTime", VisibleSurfConsumedTime);
+
 SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *visibleSurf) const {
@@ -684,6 +686,8 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
             continue;
         }
 
+
+        auto beginTime = std::chrono::high_resolution_clock::now();
         // Initialize _visibleSurf_ at first intersection
         if (depth == 0 && visibleSurf) {
             // Estimate BSDF's albedo
@@ -703,10 +707,17 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
                 Point2f(0.756135, 0.731258), Point2f(0.516165, 0.152852),
                 Point2f(0.180888, 0.214174), Point2f(0.898579, 0.503897)};
 
-            SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho);
+            SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho, false);
+            // SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho, true);
+            // if((albedo - albedo2).Average() > 0.01) {
+            //     LOG_ERROR("WRONG !");
+            // }
 
             *visibleSurf = VisibleSurface(isect, albedo, lambda);
         }
+
+        auto endTime = ::std::chrono::high_resolution_clock::now();
+        VisibleSurfConsumedTime += std::chrono::duration_cast<std::chrono::microseconds>(endTime - beginTime).count();
 
         // Possibly regularize the BSDF
         if (regularize && anyNonSpecularBounces) {

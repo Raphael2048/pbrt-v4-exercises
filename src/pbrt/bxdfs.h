@@ -57,6 +57,11 @@ class DiffuseBxDF {
     }
 
     PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        return R;
+    }
+
+    PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
               BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
         if (!(sampleFlags & BxDFReflTransFlags::Reflection) || !SameHemisphere(wo, wi))
@@ -127,6 +132,11 @@ class DiffuseTransmissionBxDF {
     }
 
     PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const{
+        return R + T;
+    }
+
+    PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
               BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
         // Compute reflection and transmission probabilities for diffuse BSDF
@@ -185,6 +195,31 @@ class DielectricBxDF {
         Vector3f wo, Float uc, Point2f u, TransportMode mode,
         BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const;
 
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        if (eta == 1 || mfDistrib.EffectivelySmooth()) {
+            Float R = FrDielectric(CosTheta(wo), eta);
+            r += SampledSpectrum(R);
+            Float T = 1 - R;
+            Vector3f wi;
+            Float etap;
+            bool valid = Refract(wo, Normal3f(0, 0, 1), eta, &etap, &wi);
+            if(valid) {
+                r += SampledSpectrum(T / Sqr(etap));
+            }
+            return r;
+        } else {
+            DCHECK_EQ(uc.size(), u2.size());
+            for (size_t i = 0; i < uc.size(); ++i) {
+                pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance);
+                if (bs && bs->pdf > 0)
+                    r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+            }
+            return r / uc.size();
+        }
+    }
+    
     PBRT_CPU_GPU
     SampledSpectrum f(Vector3f wo, Vector3f wi, TransportMode mode) const;
     PBRT_CPU_GPU
@@ -250,6 +285,11 @@ class ThinDielectricBxDF {
             SampledSpectrum ft(T / AbsCosTheta(wi));
             return BSDFSample(ft, wi, pt / (pr + pt), BxDFFlags::SpecularTransmission);
         }
+    }
+
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        return SampledSpectrum(1.);
     }
 
     PBRT_CPU_GPU
@@ -327,6 +367,24 @@ class ConductorBxDF {
         return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection);
     }
 
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2)  const{
+        
+        if (mfDistrib.EffectivelySmooth()) {
+            Vector3f wi(-wo.x, -wo.y, wo.z);
+            return FrComplex(AbsCosTheta(wi), eta, k);
+        } else {
+            SampledSpectrum r(0.);
+            DCHECK_EQ(uc.size(), u2.size());
+            for (size_t i = 0; i < uc.size(); ++i) {
+                pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance);
+                if (bs && bs->pdf > 0)
+                    r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+            }
+            return r / uc.size();
+        }
+    }
+    
     PBRT_CPU_GPU
     SampledSpectrum f(Vector3f wo, Vector3f wi, TransportMode mode) const {
         if (!SameHemisphere(wo, wi))
@@ -410,6 +468,18 @@ class TopOrBottomBxDF {
         BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
         return top ? top->Sample_f(wo, uc, u, mode, sampleFlags)
                    : bottom->Sample_f(wo, uc, u, mode, sampleFlags);
+    }
+
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
     }
 
     PBRT_CPU_GPU
@@ -775,6 +845,18 @@ class LayeredBxDF {
     }
 
     PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
+    }
+    
+    PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
               BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
         CHECK(sampleFlags == BxDFReflTransFlags::All);  // for now
@@ -931,6 +1013,20 @@ class HairBxDF {
     pstd::optional<BSDFSample> Sample_f(Vector3f wo, Float uc, Point2f u,
                                         TransportMode mode,
                                         BxDFReflTransFlags sampleFlags) const;
+
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            // Compute estimate of $\rho_\roman{hd}$
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance, BxDFReflTransFlags::All);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
+    }
+    
     PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
               BxDFReflTransFlags sampleFlags) const;
@@ -1037,6 +1133,20 @@ class MeasuredBxDF {
     pstd::optional<BSDFSample> Sample_f(Vector3f wo, Float uc, Point2f u,
                                         TransportMode mode,
                                         BxDFReflTransFlags sampleFlags) const;
+
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            // Compute estimate of $\rho_\roman{hd}$
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance, BxDFReflTransFlags::All);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
+    }
+    
     PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
               BxDFReflTransFlags sampleFlags) const;
@@ -1089,6 +1199,19 @@ class NormalizedFresnelBxDF {
             wi.z *= -1;
         return BSDFSample(f(wo, wi, mode), wi, PDF(wo, wi, mode, sampleFlags),
                           BxDFFlags::DiffuseReflection);
+    }
+
+    PBRT_CPU_GPU
+    SampledSpectrum rho(Vector3f wo, pstd::span<const Float> uc, pstd::span<const Point2f> u2) const {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            // Compute estimate of $\rho_\roman{hd}$
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i], TransportMode::Radiance, BxDFReflTransFlags::All);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
     }
 
     PBRT_CPU_GPU

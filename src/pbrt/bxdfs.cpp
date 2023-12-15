@@ -1128,18 +1128,25 @@ std::string NormalizedFresnelBxDF::ToString() const {
 
 // BxDF Method Definitions
 SampledSpectrum BxDF::rho(Vector3f wo, pstd::span<const Float> uc,
-                          pstd::span<const Point2f> u2) const {
+                          pstd::span<const Point2f> u2, bool useOwnRho) const {
     if (wo.z == 0)
         return {};
-    SampledSpectrum r(0.);
-    DCHECK_EQ(uc.size(), u2.size());
-    for (size_t i = 0; i < uc.size(); ++i) {
-        // Compute estimate of $\rho_\roman{hd}$
-        pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i]);
-        if (bs && bs->pdf > 0)
-            r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+    if(useOwnRho) {
+        auto rho_f = [&](auto ptr){
+            return ptr->rho(wo, uc, u2);
+        };
+        return Dispatch(rho_f);
+    } else {
+        SampledSpectrum r(0.);
+        DCHECK_EQ(uc.size(), u2.size());
+        for (size_t i = 0; i < uc.size(); ++i) {
+            // Compute estimate of $\rho_\roman{hd}$
+            pstd::optional<BSDFSample> bs = Sample_f(wo, uc[i], u2[i]);
+            if (bs && bs->pdf > 0)
+                r += bs->f * AbsCosTheta(bs->wi) / bs->pdf;
+        }
+        return r / uc.size();
     }
-    return r / uc.size();
 }
 
 SampledSpectrum BxDF::rho(pstd::span<const Point2f> u1, pstd::span<const Float> uc,

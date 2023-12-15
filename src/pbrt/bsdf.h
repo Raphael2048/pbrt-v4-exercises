@@ -137,9 +137,9 @@ class BSDF {
     }
     PBRT_CPU_GPU
     SampledSpectrum rho(Vector3f woRender, pstd::span<const Float> uc,
-                        pstd::span<const Point2f> u) const {
+                        pstd::span<const Point2f> u, bool useOwnRho=false) const {
         Vector3f wo = RenderToLocal(woRender);
-        return bxdf.rho(wo, uc, u);
+        return bxdf.rho(wo, uc, u, useOwnRho);
     }
 
     PBRT_CPU_GPU
