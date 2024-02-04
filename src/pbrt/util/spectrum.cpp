@@ -207,6 +207,9 @@ std::string SampledWavelengths::ToString() const {
 }
 
 XYZ SampledSpectrum::ToXYZ(const SampledWavelengths &lambda) const {
+#if SPECTRUM_HAS_WAVELENGTHS
+    CheckWaveLengthsEqual(lambda);
+#endif
     // Sample the $X$, $Y$, and $Z$ matching curves at _lambda_
     SampledSpectrum X = Spectra::X().Sample(lambda);
     SampledSpectrum Y = Spectra::Y().Sample(lambda);
@@ -220,6 +223,9 @@ XYZ SampledSpectrum::ToXYZ(const SampledWavelengths &lambda) const {
 }
 
 Float SampledSpectrum::y(const SampledWavelengths &lambda) const {
+#if SPECTRUM_HAS_WAVELENGTHS
+    CheckWaveLengthsEqual(lambda);
+#endif
     SampledSpectrum Ys = Spectra::Y().Sample(lambda);
     SampledSpectrum pdf = lambda.PDF();
     return SafeDiv(Ys * *this, pdf).Average() / CIE_Y_integral;
@@ -227,9 +233,26 @@ Float SampledSpectrum::y(const SampledWavelengths &lambda) const {
 
 RGB SampledSpectrum::ToRGB(const SampledWavelengths &lambda,
                            const RGBColorSpace &cs) const {
+#if SPECTRUM_HAS_WAVELENGTHS
+    CheckWaveLengthsEqual(lambda);
+#endif
     XYZ xyz = ToXYZ(lambda);
     return cs.ToRGB(xyz);
 }
+#if SPECTRUM_HAS_WAVELENGTHS
+void SampledSpectrum::SetWaveLengths(const SampledWavelengths& SW) {
+    for(int i =0; i < NSpectrumSamples; ++i) {
+        lambda[i] = SW[i];
+        pdf[i] = SW.PDF()[i];
+    }
+}
+void SampledSpectrum::CheckWaveLengthsEqual(const SampledWavelengths& SW) const{
+    for(int i =0; i < NSpectrumSamples; ++i) {
+        DCHECK_EQ(lambda[i], SW[i]);
+        DCHECK_EQ(pdf[i], SW.PDF()[i]);
+    }
+}
+#endif
 
 RGBAlbedoSpectrum::RGBAlbedoSpectrum(const RGBColorSpace &cs, RGB rgb) {
     DCHECK_LE(std::max({rgb.r, rgb.g, rgb.b}), 1);

@@ -256,8 +256,9 @@ void RayIntegrator::EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler
         ++nCameraRays;
         // Evaluate radiance along camera ray
         bool initializeVisibleSurface = camera.GetFilm().UsesVisibleSurface();
-        L = cameraRay->weight * Li(cameraRay->ray, lambda, sampler, scratchBuffer,
-                                   initializeVisibleSurface ? &visibleSurface : nullptr);
+        L = Li(cameraRay->ray, lambda, sampler, scratchBuffer,
+               initializeVisibleSurface ? &visibleSurface : nullptr) *
+            cameraRay->weight;
 
         // Issue warning if unexpected radiance value is returned
         if (L.HasNaNs()) {
@@ -391,6 +392,9 @@ SampledSpectrum SimplePathIntegrator::Li(RayDifferential ray, SampledWavelengths
                                          VisibleSurface *) const {
     // Estimate radiance along ray using simple path tracing
     SampledSpectrum L(0.f), beta(1.f);
+#if SPECTRUM_HAS_WAVELENGTHS
+    L.SetWaveLengths(lambda);
+#endif
     bool specularBounce = true;
     int depth = 0;
     while (beta) {
@@ -630,6 +634,10 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
                                    VisibleSurface *visibleSurf) const {
     // Declare local variables for _PathIntegrator::Li()_
     SampledSpectrum L(0.f), beta(1.f);
+#if SPECTRUM_HAS_WAVELENGTHS
+    L.SetWaveLengths(lambda);
+    beta.SetWaveLengths(lambda);
+#endif
     int depth = 0;
 
     Float p_b, etaScale = 1;

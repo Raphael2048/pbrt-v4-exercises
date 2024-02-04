@@ -87,6 +87,8 @@ Float SpectrumToPhotometric(Spectrum s);
 
 XYZ SpectrumToXYZ(Spectrum s);
 
+#define SPECTRUM_HAS_WAVELENGTHS 1
+
 // SampledSpectrum Definition
 class SampledSpectrum {
   public:
@@ -260,9 +262,19 @@ class SampledSpectrum {
         return sum / NSpectrumSamples;
     }
 
+#if SPECTRUM_HAS_WAVELENGTHS
+    void SetWaveLengths(const SampledWavelengths& SW);
+    void CheckWaveLengthsEqual(const SampledWavelengths& SW) const;
+#endif
+
   private:
     friend struct SOA<SampledSpectrum>;
     pstd::array<Float, NSpectrumSamples> values;
+
+#if SPECTRUM_HAS_WAVELENGTHS
+    pstd::array<Float, NSpectrumSamples> lambda, pdf;
+#endif
+    
 };
 
 // SampledWavelengths Definitions
