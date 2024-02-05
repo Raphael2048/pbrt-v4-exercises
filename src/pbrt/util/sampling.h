@@ -113,22 +113,73 @@ PBRT_CPU_GPU inline int SampleDiscrete(pstd::span<const Float> weights, Float u,
 }
 
 PBRT_CPU_GPU inline Float LinearPDF(Float x, Float a, Float b) {
-    DCHECK(a >= 0 && b >= 0);
+    DCHECK((a != 0.0f) || (b != 0.0f));
     if (x < 0 || x > 1)
         return 0;
-    return 2 * Lerp(x, a, b) / (a + b);
+    if(std::signbit(a) == std::signbit(b)) {
+        a = std::abs(a);
+        b = std::abs(b);
+        return 2 * Lerp(x, a, b) / (a + b);
+    } else {
+        Float m = a / (a - b);
+        a = std::abs(a);
+        b = std::abs(b);
+        Float s = (a * m + b * (1.0f - m)) * 0.5f;
+        if(x < m) {
+            return Lerp(x, a, -b) / s;
+        } else {
+            return Lerp(x, -a, b) / s;
+        }
+    }
 }
 
 PBRT_CPU_GPU inline Float SampleLinear(Float u, Float a, Float b) {
-    DCHECK(a >= 0 && b >= 0);
+    DCHECK((a != 0.0f) || (b != 0.0f));
     if (u == 0 && a == 0)
         return 0;
-    Float x = u * (a + b) / (a + std::sqrt(Lerp(u, Sqr(a), Sqr(b))));
-    return std::min(x, OneMinusEpsilon);
+    if(std::signbit(a) == std::signbit(b)) {
+        a = std::abs(a);
+        b = std::abs(b);
+        Float x = u * (a + b) / (a + std::sqrt(Lerp(u, Sqr(a), Sqr(b))));
+        return std::min(x, OneMinusEpsilon);
+    } else {
+        Float m = a / (a - b);
+        a = std::abs(a);
+        b = std::abs(b);
+        Float s_all = (m * a + (1.0f - m) * b) * 0.5f;
+        Float ratio = m * a * 0.5f / s_all;
+        if(u < ratio) {
+            Float s = s_all * u;
+            Float x = m - std::sqrt(Sqr(m) - 2 * m * s / a);
+            return std::min(x, OneMinusEpsilon);
+        } else {
+            Float s = s_all * (1.0f - u);
+            m = 1.0f - m;
+            Float x = m - std::sqrt(Sqr(m) - 2 * m * s / b);
+            return std::min(1.0f - x, OneMinusEpsilon);
+        }
+    }
 }
 
 PBRT_CPU_GPU inline Float InvertLinearSample(Float x, Float a, Float b) {
-    return x * (a * (2 - x) + b * x) / (a + b);
+    DCHECK((a != 0.0f) || (b != 0.0f));
+    if(std::signbit(a) == std::signbit(b)) {
+        return x * (a * (2 - x) + b * x) / (a + b);
+    } else {
+        Float m = a / (a - b);
+        a = std::abs(a);
+        b = std::abs(b);
+        Float s = (a * m + (1.0f - m) * b) * 0.5f;
+        if(x < m) {
+            Float s1 = (2 * a - a * x / m) * x * 0.5;
+            return s1 / s;
+        } else {
+            m = 1.0f - m;
+            x = 1.0f - x;
+            Float s2 = (2 * b - b * x / m) * x * 0.5;
+            return 1.0f - s2 / s;
+        }
+    }
 }
 
 PBRT_CPU_GPU inline Float BilinearPDF(Point2f p, pstd::span<const Float> w) {

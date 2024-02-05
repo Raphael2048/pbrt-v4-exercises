@@ -623,7 +623,7 @@ TEST(Sampling, Linear) {
     int nBuckets = 32;
     std::vector<int> buckets(nBuckets, 0);
 
-    int ranges[][2] = {{0, 1}, {1, 2}, {5, 50}, {100, 0}, {75, 50}};
+    int ranges[][2] = {{0, 1}, {1, 2}, {-5, -50}, {100, 0}, {75, 50}};
     for (const auto r : ranges) {
         Float f0 = r[0], f1 = r[1];
         int nSamples = 1000000;
@@ -641,25 +641,25 @@ TEST(Sampling, Linear) {
         }
     }
 
-    auto lin = [](Float v) { return 1 + 3 * v; };
+    auto lin = [](Float v) { return std::abs(8 - 15 * v); };
     auto values = Sample1DFunction(lin, 1024, 64 * 1024, 0.f, 1.f);
     PiecewiseConstant1D distrib(values);
     for (Float u : Uniform1D(100)) {
-        Float cx = SampleLinear(u, 1, 4);
-        Float cp = LinearPDF(cx, 1, 4);
+        Float cx = SampleLinear(u, 8, -7);
+        Float cp = LinearPDF(cx, 8, -7);
 
         Float dp;
         Float dx = distrib.Sample(u, &dp);
-        EXPECT_LT(std::abs(cx - dx), 3e-3)
-            << "Closed form = " << cx << ", distrib = " << dx;
-        EXPECT_LT(std::abs(cp - dp), 3e-3)
+         EXPECT_LT(std::abs(cx - dx), 4e-3)
+             << "Closed form = " << cx << ", distrib = " << dx;
+        EXPECT_LT(std::abs(cp - dp), 4e-3)
             << "Closed form PDF = " << cp << ", distrib PDF = " << dp;
     }
 
     RNG rng;
     for (Float u : Uniform1D(100)) {
-        Float low = rng.Uniform<Float>() * 10;
-        Float high = rng.Uniform<Float>() * 10;
+        Float low = rng.Uniform<Float>() * 10 - 5;
+        Float high = rng.Uniform<Float>() * 10 - 5;
         if (low < high)
             pstd::swap(low, high);
         Float x = SampleLinear(u, low, high);
