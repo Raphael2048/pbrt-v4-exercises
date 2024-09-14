@@ -1812,20 +1812,9 @@ PBRT_CPU_GPU inline bool Inside(const DirectionCone &d, Vector3f w) {
     return !d.IsEmpty() && Dot(d.w, Normalize(w)) >= d.cosTheta;
 }
 
-PBRT_CPU_GPU inline DirectionCone BoundSubtendedDirections(const Bounds3f &b, Point3f p) {
-    // Compute bounding sphere for _b_ and check if _p_ is inside
-    Float radius;
-    Point3f pCenter;
-    b.BoundingSphere(&pCenter, &radius);
-    if (DistanceSquared(p, pCenter) < Sqr(radius))
-        return DirectionCone::EntireSphere();
 
-    // Compute and return _DirectionCone_ for bounding sphere
-    Vector3f w = Normalize(pCenter - p);
-    Float sin2ThetaMax = Sqr(radius) / DistanceSquared(pCenter, p);
-    Float cosThetaMax = SafeSqrt(1 - sin2ThetaMax);
-    return DirectionCone(w, cosThetaMax);
-}
+
+PBRT_CPU_GPU DirectionCone BoundSubtendedDirections(const Bounds3f &b, Point3f p);
 
 PBRT_CPU_GPU
 inline Vector3f DirectionCone::ClosestVectorInCone(Vector3f wp) const {
@@ -1852,7 +1841,7 @@ DirectionCone Union(const DirectionCone &a, const DirectionCone &b);
 // Frame Definition
 class Frame {
   public:
-    // Frame Public Methods
+    // Frame Public Methods 
     PBRT_CPU_GPU
     Frame() : x(1, 0, 0), y(0, 1, 0), z(0, 0, 1) {}
     PBRT_CPU_GPU

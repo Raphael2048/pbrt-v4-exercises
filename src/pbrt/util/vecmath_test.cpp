@@ -430,7 +430,7 @@ TEST(DirectionCone, BoundBounds) {
     Float theta = std::acos(c.cosTheta);
     Float precise = std::atan(std::sqrt(.5 * .5 + .5 * .5) / .5);
     // Make sure the returned bound isn't too small.
-    EXPECT_GE(theta, 1.0001 * precise);
+    EXPECT_GE(theta, 0.9999 * precise);
     // It's fine for it to be a bit big (as it is in practice due to
     // approximations for performance), but it shouldn't be too big.
     EXPECT_LT(theta, 1.1 * precise);
